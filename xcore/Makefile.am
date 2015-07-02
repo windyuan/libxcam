@@ -119,6 +119,7 @@ xcam_sources +=              \
 	cl_macc_handler.cpp	 \
 	cl_tnr_handler.cpp	\
 	cl_ee_handler.cpp	 \
+	priority_buffer_queue.cpp	 \
 	$(NULL)
 endif
 
