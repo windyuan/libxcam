@@ -134,15 +134,10 @@ inline float4 simple_calculate (
     p[index] = data;
 }
 
-__constant float distance_coff[3][3] =
-{   {3.0f, 2.0f, 1.0f},
-    {2.0f, 1.5f, 0.8f},
-    {1.0f, 0.8f, 0.6f}
-};
-
 inline float delta_coff (float delta)
 {
-    return (3.0f * 0.1f / (fabs(delta) + 0.1f));
+    float coff = 1.0f - 3.0f * fabs(delta);
+    return fmax (0.25f, coff);
 }
 
 inline float4 demosaic_x0y0_gr(__local float4 *in, int in_x, int in_y)
