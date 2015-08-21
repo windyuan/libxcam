@@ -134,41 +134,234 @@ inline float4 simple_calculate (
     p[index] = data;
 }
 
-inline void shared_demosaic (
+__constant float distance_coff[3][3] =
+{   {3.0f, 2.0f, 1.0f},
+    {2.0f, 1.5f, 0.8f},
+    {1.0f, 0.8f, 0.6f}
+};
+
+inline float delta_coff (float delta)
+{
+    return (3.0f * 0.1f / (fabs(delta) + 0.1f));
+}
+
+inline float4 demosaic_x0y0_gr(__local float4 *in, int in_x, int in_y)
+{
+    float4 out_data;
+    float value;
+    float coff[5];
+
+    coff[0] = delta_coff(0.0f);
+
+    value = (in[shared_pos(in_x - 1, in_y)].y + in[shared_pos(in_x, in_y)].y) / 2.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x - 1, in_y - 1)].y - value);
+    coff[2] = delta_coff(in[shared_pos(in_x, in_y - 1)].y - value);
+    coff[3] = delta_coff(in[shared_pos(in_x - 1, in_y + 1)].y - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].y - value);
+    out_data.x = (in[shared_pos(in_x - 1, in_y - 1)].y * coff[1] +
+                  in[shared_pos(in_x, in_y - 1)].y * coff[2] +
+                  in[shared_pos(in_x - 1, in_y + 1)].y * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].y * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+
+    value = (in[shared_pos(in_x, in_y)].x * 4.0f + in[shared_pos(in_x - 1, in_y - 1)].w +
+             in[shared_pos(in_x, in_y - 1)].w + in[shared_pos(in_x - 1, in_y)].w + in[shared_pos(in_x, in_y)].w) / 8.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].x - value);
+    coff[2] = delta_coff(in[shared_pos(in_x - 1, in_y)].x - value);
+    coff[3] = delta_coff(in[shared_pos(in_x + 1, in_y)].x - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].x - value);
+    out_data.y = (in[shared_pos(in_x, in_y - 1)].x * coff[1] +
+                  in[shared_pos(in_x - 1, in_y)].x * coff[2] +
+                  in[shared_pos(in_x + 1, in_y)].x * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].x * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (in[shared_pos(in_x, in_y - 1)].z + in[shared_pos(in_x, in_y)].z) / 2.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x - 1, in_y - 1)].z - value);
+    coff[2] = delta_coff(in[shared_pos(in_x + 1, in_y - 1)].z - value);
+    coff[3] = delta_coff(in[shared_pos(in_x - 1, in_y)].z - value);
+    coff[4] = delta_coff(in[shared_pos(in_x + 1, in_y)].z - value);
+    out_data.z = (in[shared_pos(in_x - 1, in_y - 1)].z * coff[1] +
+                  in[shared_pos(in_x + 1, in_y - 1)].z * coff[2] +
+                  in[shared_pos(in_x - 1, in_y)].z * coff[3] +
+                  in[shared_pos(in_x + 1, in_y)].z * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+    out_data.w = 0.0f;
+
+    return out_data;
+}
+
+inline float4 demosaic_x1y0_r(__local float4 *in, int in_x, int in_y)
+{
+    float4 out_data;
+    float value;
+    float coff[5];
+
+    coff[0] = delta_coff(0.0f);
+
+    value = in[shared_pos(in_x, in_y)].y;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].y - value);
+    coff[2] = delta_coff(in[shared_pos(in_x - 1, in_y)].y - value);
+    coff[3] = delta_coff(in[shared_pos(in_x + 1, in_y)].y - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].y - value);
+    out_data.x = (in[shared_pos(in_x, in_y - 1)].y * coff[1] +
+                  in[shared_pos(in_x - 1, in_y)].y * coff[2] +
+                  in[shared_pos(in_x + 1, in_y)].y * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].y * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (in[shared_pos(in_x, in_y)].x + in[shared_pos(in_x, in_y)].w +
+             in[shared_pos(in_x + 1, in_y)].x + in[shared_pos(in_x, in_y - 1)].w) / 4.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y)].x - value);
+    coff[2] = delta_coff(in[shared_pos(in_x, in_y)].w - value);
+    coff[3] = delta_coff(in[shared_pos(in_x + 1, in_y)].x - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y - 1)].w - value);
+    out_data.y = (in[shared_pos(in_x, in_y)].x * coff[1] +
+                  in[shared_pos(in_x, in_y)].w * coff[2] +
+                  in[shared_pos(in_x + 1, in_y)].x * coff[3] +
+                  in[shared_pos(in_x, in_y - 1)].w * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (in[shared_pos(in_x, in_y - 1)].z + in[shared_pos(in_x + 1, in_y - 1)].z +
+             in[shared_pos(in_x, in_y)].z + in[shared_pos(in_x + 1, in_y)].z) / 4.0f;
+
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].z - value);
+    coff[2] = delta_coff(in[shared_pos(in_x + 1, in_y - 1)].z - value);
+    coff[3] = delta_coff(in[shared_pos(in_x, in_y)].z - value);
+    coff[4] = delta_coff(in[shared_pos(in_x + 1, in_y)].z - value);
+    out_data.z = (in[shared_pos(in_x, in_y - 1)].z * coff[1] +
+                  in[shared_pos(in_x + 1, in_y - 1)].z * coff[2] +
+                  in[shared_pos(in_x, in_y)].z * coff[3] +
+                  in[shared_pos(in_x + 1, in_y)].z * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+    out_data.w = 0.0f;
+
+    return out_data;
+}
+
+
+inline float4 demosaic_x0y1_b(__local float4 *in, int in_x, int in_y)
+{
+    float4 out_data;
+    float value;
+    float coff[5];
+
+    coff[0] = delta_coff(0.0f);
+
+    value = (in[shared_pos(in_x - 1, in_y)].y + in[shared_pos(in_x, in_y)].y +
+             in[shared_pos(in_x - 1, in_y + 1)].y + in[shared_pos(in_x, in_y + 1)].y) / 4.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x - 1, in_y)].y - value);
+    coff[2] = delta_coff(in[shared_pos(in_x, in_y)].y - value);
+    coff[3] = delta_coff(in[shared_pos(in_x - 1, in_y + 1)].y - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].y - value);
+    out_data.x = (in[shared_pos(in_x - 1, in_y)].y * coff[1] +
+                  in[shared_pos(in_x, in_y)].y * coff[2] +
+                  in[shared_pos(in_x - 1, in_y + 1)].y * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].y * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+
+    value = (in[shared_pos(in_x, in_y)].x + in[shared_pos(in_x, in_y)].w +
+             in[shared_pos(in_x - 1, in_y)].w + in[shared_pos(in_x, in_y + 1)].x) / 4.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y)].x - value);
+    coff[2] = delta_coff(in[shared_pos(in_x, in_y)].w - value);
+    coff[3] = delta_coff(in[shared_pos(in_x - 1, in_y)].w - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].x - value);
+    out_data.y = (in[shared_pos(in_x - 1, in_y)].x * coff[1] +
+                  in[shared_pos(in_x, in_y)].w * coff[2] +
+                  in[shared_pos(in_x - 1, in_y + 1)].w * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].x * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = in[shared_pos(in_x, in_y)].z;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].z - value);
+    coff[2] = delta_coff(in[shared_pos(in_x - 1, in_y)].z - value);
+    coff[3] = delta_coff(in[shared_pos(in_x + 1, in_y)].z - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].z - value);
+    out_data.z = (in[shared_pos(in_x, in_y - 1)].z * coff[1] +
+                  in[shared_pos(in_x - 1, in_y)].z * coff[2] +
+                  in[shared_pos(in_x + 1, in_y)].z * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].z * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+    out_data.w = 0.0f;
+    return out_data;
+};
+
+inline float4 demosaic_x1y1_gb(__local float4 *in, int in_x, int in_y)
+{
+    float4 out_data;
+    float value;
+    float coff[5];
+
+    coff[0] = delta_coff(0.0f);
+
+    value = (in[shared_pos(in_x, in_y)].y + in[shared_pos(in_x, in_y + 1)].y) / 2.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x - 1, in_y)].y - value);
+    coff[2] = delta_coff(in[shared_pos(in_x + 1, in_y)].y - value);
+    coff[3] = delta_coff(in[shared_pos(in_x - 1, in_y + 1)].y - value);
+    coff[4] = delta_coff(in[shared_pos(in_x + 1, in_y + 1)].y - value);
+    out_data.x = (in[shared_pos(in_x - 1, in_y)].y * coff[1] +
+                  in[shared_pos(in_x + 1, in_y)].y * coff[2] +
+                  in[shared_pos(in_x - 1, in_y + 1)].y * coff[3] +
+                  in[shared_pos(in_x + 1, in_y + 1)].y * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (in[shared_pos(in_x, in_y)].w * 4.0f + in[shared_pos(in_x, in_y)].x +
+             in[shared_pos(in_x + 1, in_y)].x + in[shared_pos(in_x, in_y + 1)].x + in[shared_pos(in_x + 1, in_y + 1)].x) / 8.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].w - value);
+    coff[2] = delta_coff(in[shared_pos(in_x - 1, in_y)].w - value);
+    coff[3] = delta_coff(in[shared_pos(in_x + 1, in_y)].w - value);
+    coff[4] = delta_coff(in[shared_pos(in_x, in_y + 1)].w - value);
+    out_data.y = (in[shared_pos(in_x, in_y - 1)].w * coff[1] +
+                  in[shared_pos(in_x - 1, in_y)].w * coff[2] +
+                  in[shared_pos(in_x + 1, in_y)].w * coff[3] +
+                  in[shared_pos(in_x, in_y + 1)].w * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+    value = (in[shared_pos(in_x, in_y)].z + in[shared_pos(in_x + 1, in_y)].z) / 2.0f;
+    coff[1] = delta_coff(in[shared_pos(in_x, in_y - 1)].z - value);
+    coff[2] = delta_coff(in[shared_pos(in_x + 1, in_y - 1)].z - value);
+    coff[3] = delta_coff(in[shared_pos(in_x, in_y + 1)].z - value);
+    coff[4] = delta_coff(in[shared_pos(in_x + 1, in_y + 1)].z - value);
+    out_data.z = (in[shared_pos(in_x, in_y - 1)].z * coff[1] +
+                  in[shared_pos(in_x + 1, in_y - 1)].z * coff[2] +
+                  in[shared_pos(in_x, in_y + 1)].z * coff[3] +
+                  in[shared_pos(in_x + 1, in_y + 1)].z * coff[4] +
+                  value * coff[0]) /
+                 (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+    out_data.w = 0.0f;
+
+    return out_data;
+}
+
+void shared_demosaic (
     __local float4 *in, int in_x, int in_y,
     __write_only image2d_t out, int out_x, int out_y)
 {
     float4 out_data;
 
-    out_data.x = (in[shared_pos(in_x - 1, in_y)].y + in[shared_pos(in_x, in_y)].y) / 2.0f;
-    out_data.y = (in[shared_pos(in_x, in_y)].x * 4.0f + in[shared_pos(in_x - 1, in_y - 1)].w +
-                  in[shared_pos(in_x, in_y - 1)].w + in[shared_pos(in_x - 1, in_y)].w + in[shared_pos(in_x, in_y)].w) / 8.0f;
-    out_data.z = (in[shared_pos(in_x, in_y - 1)].z + in[shared_pos(in_x, in_y)].z) / 2.0f;
-    out_data.w = 0.0f;
+    out_data = demosaic_x0y0_gr (in, in_x, in_y);
     write_imagef(out, (int2)(out_x, out_y), out_data);
 
 
-    out_data.x = in[shared_pos(in_x, in_y)].y;
-    out_data.y = (in[shared_pos(in_x, in_y)].x + in[shared_pos(in_x, in_y)].w +
-                  in[shared_pos(in_x + 1, in_y)].x + in[shared_pos(in_x, in_y - 1)].w) / 4.0f;
-    out_data.z = (in[shared_pos(in_x, in_y - 1)].z + in[shared_pos(in_x + 1, in_y - 1)].z +
-                  in[shared_pos(in_x, in_y)].z + in[shared_pos(in_x + 1, in_y)].z) / 4.0f;
-    out_data.w = 0.0f;
+    out_data = demosaic_x1y0_r (in, in_x, in_y);
     write_imagef(out, (int2)(out_x + 1, out_y), out_data);
 
-    out_data.x = (in[shared_pos(in_x - 1, in_y)].y + in[shared_pos(in_x, in_y)].y +
-                  in[shared_pos(in_x - 1, in_y + 1)].y + in[shared_pos(in_x, in_y + 1)].y) / 4.0f;
-    out_data.y = (in[shared_pos(in_x, in_y)].x + in[shared_pos(in_x, in_y)].w +
-                  in[shared_pos(in_x - 1, in_y)].w + in[shared_pos(in_x, in_y + 1)].x) / 4.0f;
-    out_data.z = in[shared_pos(in_x, in_y)].z;
-    out_data.w = 0.0f;
+    out_data = demosaic_x0y1_b (in, in_x, in_y);
     write_imagef(out, (int2)(out_x, out_y + 1), out_data);
 
-    out_data.x = (in[shared_pos(in_x, in_y)].y + in[shared_pos(in_x, in_y + 1)].y) / 2.0f;
-    out_data.y = (in[shared_pos(in_x, in_y)].w * 4.0f + in[shared_pos(in_x, in_y)].x +
-                  in[shared_pos(in_x + 1, in_y)].x + in[shared_pos(in_x, in_y + 1)].x + in[shared_pos(in_x + 1, in_y + 1)].x) / 8.0f;
-    out_data.z = (in[shared_pos(in_x, in_y)].z + in[shared_pos(in_x + 1, in_y)].x) / 2.0f;
-    out_data.w = 0.0f;
+    out_data = demosaic_x1y1_gb (in, in_x, in_y);
     write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data);
 
 }
