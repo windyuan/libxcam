@@ -608,7 +608,7 @@ CL3aImageProcessor::set_profile (const CL3aImageProcessor::PipelineProfile value
 
     if (value >= ExtremePipelineProfile) {
         _snr_mode |= XCAM_DENOISE_TYPE_BNR;
-        _tnr_mode |= CL_TNR_TYPE_YUV;
+        //_tnr_mode |= CL_TNR_TYPE_YUV;
     }
     STREAM_LOCK;
     if (_yuv_pipe.ptr ())

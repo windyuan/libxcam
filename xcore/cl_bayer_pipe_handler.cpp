@@ -300,9 +300,16 @@ CLBayerPipeImageKernel::prepare_arguments (
         XCAM_LOG_WARNING ("CL3AStatsCalculatorContext allocate data failed");
         return XCAM_RETURN_ERROR_MEM;
     }
+    CLImageDesc out_image_info;
+    out_image_info.format.image_channel_order = CL_RGBA;
+    out_image_info.format.image_channel_data_type = CL_UNORM_INT16; //CL_UNSIGNED_INT32;
+    out_image_info.width = out_video_info.width;
+    out_image_info.height = out_video_info.height;
+    out_image_info.row_pitch = out_video_info.strides[0];
 
     _image_in = new CLVaImage (context, input);
-    _image_out = new CLVaImage (context, output);
+    //_image_out = new CLVaImage (context, output);
+    _image_out = new CLVaImage (context, output, out_image_info);
 
     XCAM_ASSERT (_image_in->is_valid () && _image_out->is_valid ());
     XCAM_FAIL_RETURN (

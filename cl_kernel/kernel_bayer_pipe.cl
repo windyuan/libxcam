@@ -404,6 +404,229 @@ demosaic_denoise_x1y1_gb (__local float *in_x, __local float *in_y, __local floa
     return out_data;
 }
 
+void shared_demosaic_denoise (
+    __local float *x_data_in, __local float *y_data_in, __local float *z_data_in, __local float *w_data_in,
+    int in_x, int in_y,
+    __write_only image2d_t out, int out_x, int out_y)
+{
+    float slm_buffer[9];
+    float4 out_data[4];
+    float coff[5];
+    float value;
+
+    coff[0] = DEFAULT_DELTA_COFF;
+
+////////////////////////////////R////////////////////////////////////////////////
+    slm_buffer[0] = y_data_in[shared_pos(in_x - 1, in_y - 1)];
+    slm_buffer[1] = y_data_in[shared_pos(in_x, in_y - 1)];
+    slm_buffer[2] = y_data_in[shared_pos(in_x + 1, in_y - 1)];
+    slm_buffer[3] = y_data_in[shared_pos(in_x - 1, in_y)];
+    slm_buffer[4] = y_data_in[shared_pos(in_x, in_y)];
+    slm_buffer[5] = y_data_in[shared_pos(in_x + 1, in_y)];
+    slm_buffer[6] = y_data_in[shared_pos(in_x - 1, in_y + 1)];
+    slm_buffer[7] = y_data_in[shared_pos(in_x, in_y + 1)];
+    slm_buffer[8] = y_data_in[shared_pos(in_x + 1, in_y + 1)];
+
+    value = (slm_buffer[3] + slm_buffer[4]) * 0.5f;
+    coff[1] = delta_coff(slm_buffer[0] - value);
+    coff[2] = delta_coff(slm_buffer[1] - value);
+    coff[3] = delta_coff(slm_buffer[6] - value);
+    coff[4] = delta_coff(slm_buffer[7] - value);
+    out_data[0].x = (slm_buffer[0] * coff[1] +
+                     slm_buffer[1] * coff[2] +
+                     slm_buffer[6] * coff[3] +
+                     slm_buffer[7] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = slm_buffer[4];
+    coff[1] = delta_coff(slm_buffer[1] - value);
+    coff[2] = delta_coff(slm_buffer[3] - value);
+    coff[3] = delta_coff(slm_buffer[5] - value);
+    coff[4] = delta_coff(slm_buffer[7] - value);
+    out_data[1].x = (slm_buffer[1] * coff[1] +
+                     slm_buffer[3] * coff[2] +
+                     slm_buffer[5] * coff[3] +
+                     slm_buffer[7] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[3] + slm_buffer[4] +
+             slm_buffer[6] + slm_buffer[7]) * 0.25f;
+    coff[1] = delta_coff(slm_buffer[3] - value);
+    coff[2] = delta_coff(slm_buffer[4] - value);
+    coff[3] = delta_coff(slm_buffer[6] - value);
+    coff[4] = delta_coff(slm_buffer[7] - value);
+    out_data[2].x = (slm_buffer[3] * coff[1] +
+                     slm_buffer[4] * coff[2] +
+                     slm_buffer[6] * coff[3] +
+                     slm_buffer[7] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[4] + slm_buffer[7]) * 0.5f;
+    coff[1] = delta_coff(slm_buffer[3] - value);
+    coff[2] = delta_coff(slm_buffer[5] - value);
+    coff[3] = delta_coff(slm_buffer[6] - value);
+    coff[4] = delta_coff(slm_buffer[8] - value);
+    out_data[3].x = (slm_buffer[3] * coff[1] +
+                     slm_buffer[5] * coff[2] +
+                     slm_buffer[6] * coff[3] +
+                     slm_buffer[8] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+////////////////////////////////B////////////////////////////////////////////////
+
+    slm_buffer[0] = z_data_in[shared_pos(in_x - 1, in_y - 1)];
+    slm_buffer[1] = z_data_in[shared_pos(in_x, in_y - 1)];
+    slm_buffer[2] = z_data_in[shared_pos(in_x + 1, in_y - 1)];
+    slm_buffer[3] = z_data_in[shared_pos(in_x - 1, in_y)];
+    slm_buffer[4] = z_data_in[shared_pos(in_x, in_y)];
+    slm_buffer[5] = z_data_in[shared_pos(in_x + 1, in_y)];
+    slm_buffer[6] = z_data_in[shared_pos(in_x - 1, in_y + 1)];
+    slm_buffer[7] = z_data_in[shared_pos(in_x, in_y + 1)];
+    slm_buffer[8] = z_data_in[shared_pos(in_x + 1, in_y + 1)];
+
+    value = (slm_buffer[1] + slm_buffer[4]) * 0.5f;
+    coff[1] = delta_coff(slm_buffer[0] - value);
+    coff[2] = delta_coff(slm_buffer[2] - value);
+    coff[3] = delta_coff(slm_buffer[3] - value);
+    coff[4] = delta_coff(slm_buffer[5] - value);
+    out_data[0].z = (slm_buffer[0] * coff[1] +
+                     slm_buffer[2] * coff[2] +
+                     slm_buffer[3] * coff[3] +
+                     slm_buffer[5] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[1] + slm_buffer[2] +
+             slm_buffer[4] + slm_buffer[5]) * 0.25f;
+    coff[1] = delta_coff(slm_buffer[1] - value);
+    coff[2] = delta_coff(slm_buffer[2] - value);
+    coff[3] = delta_coff(slm_buffer[4] - value);
+    coff[4] = delta_coff(slm_buffer[5] - value);
+    out_data[1].z = (slm_buffer[1] * coff[1] +
+                     slm_buffer[2] * coff[2] +
+                     slm_buffer[4] * coff[3] +
+                     slm_buffer[5] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = slm_buffer[4];
+    coff[1] = delta_coff(slm_buffer[1] - value);
+    coff[2] = delta_coff(slm_buffer[3] - value);
+    coff[3] = delta_coff(slm_buffer[5] - value);
+    coff[4] = delta_coff(slm_buffer[7] - value);
+    out_data[2].z = (slm_buffer[1] * coff[1] +
+                     slm_buffer[3] * coff[2] +
+                     slm_buffer[5] * coff[3] +
+                     slm_buffer[7] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[4] + slm_buffer[5]) * 0.5f;
+    coff[1] = delta_coff(slm_buffer[1] - value);
+    coff[2] = delta_coff(slm_buffer[2] - value);
+    coff[3] = delta_coff(slm_buffer[7] - value);
+    coff[4] = delta_coff(slm_buffer[8] - value);
+    out_data[3].z = (slm_buffer[1] * coff[1] +
+                     slm_buffer[2] * coff[2] +
+                     slm_buffer[7] * coff[3] +
+                     slm_buffer[8] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+///////////////////////////////////////G//////////////////////////////////////////////////////////
+
+    slm_buffer[0] = x_data_in[shared_pos(in_x, in_y - 1)];
+    slm_buffer[1] = x_data_in[shared_pos(in_x - 1, in_y)];
+    slm_buffer[2] = x_data_in[shared_pos(in_x, in_y)];
+    slm_buffer[3] = x_data_in[shared_pos(in_x + 1, in_y)];
+    slm_buffer[4] = x_data_in[shared_pos(in_x, in_y + 1)];
+    slm_buffer[5] = w_data_in[shared_pos(in_x - 1, in_y - 1)];
+    slm_buffer[6] = w_data_in[shared_pos(in_x, in_y - 1)];
+    slm_buffer[7] = w_data_in[shared_pos(in_x - 1, in_y)];
+    slm_buffer[8] = w_data_in[shared_pos(in_x, in_y)];
+
+    value = (slm_buffer[2] * 4.0f + slm_buffer[5] +
+             slm_buffer[6] + slm_buffer[7] + slm_buffer[8]) * 0.125f;
+    coff[1] = delta_coff(slm_buffer[0] - value);
+    coff[2] = delta_coff(slm_buffer[1] - value);
+    coff[3] = delta_coff(slm_buffer[3] - value);
+    coff[4] = delta_coff(slm_buffer[4] - value);
+    out_data[0].y = (slm_buffer[0] * coff[1] +
+                     slm_buffer[1] * coff[2] +
+                     slm_buffer[3] * coff[3] +
+                     slm_buffer[4] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[2] + slm_buffer[8] +
+             slm_buffer[3] + slm_buffer[6]) * 0.25f;
+    coff[1] = delta_coff(slm_buffer[2] - value);
+    coff[2] = delta_coff(slm_buffer[8] - value);
+    coff[3] = delta_coff(slm_buffer[3] - value);
+    coff[4] = delta_coff(slm_buffer[6] - value);
+    out_data[1].y = (slm_buffer[2] * coff[1] +
+                     slm_buffer[8] * coff[2] +
+                     slm_buffer[3] * coff[3] +
+                     slm_buffer[6] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    value = (slm_buffer[2] + slm_buffer[8] +
+             slm_buffer[7] + slm_buffer[4]) * 0.25f;
+    coff[1] = delta_coff(slm_buffer[2] - value);
+    coff[2] = delta_coff(slm_buffer[8] - value);
+    coff[3] = delta_coff(slm_buffer[7] - value);
+    coff[4] = delta_coff(slm_buffer[4] - value);
+    out_data[2].y = (slm_buffer[2] * coff[1] +
+                     slm_buffer[8] * coff[2] +
+                     slm_buffer[7] * coff[3] +
+                     slm_buffer[4] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    slm_buffer[0] = x_data_in[shared_pos(in_x + 1, in_y + 1)];
+    slm_buffer[1] = w_data_in[shared_pos(in_x + 1, in_y)];
+    slm_buffer[5] = w_data_in[shared_pos(in_x, in_y + 1)];
+
+    value = (slm_buffer[8] * 4.0f + slm_buffer[2] +
+             slm_buffer[3] + slm_buffer[4] + slm_buffer[0]) * 0.125f;
+    coff[1] = delta_coff(slm_buffer[6] - value);
+    coff[2] = delta_coff(slm_buffer[7] - value);
+    coff[3] = delta_coff(slm_buffer[1] - value);
+    coff[4] = delta_coff(slm_buffer[5] - value);
+    out_data[3].y = (slm_buffer[6] * coff[1] +
+                     slm_buffer[7] * coff[2] +
+                     slm_buffer[1] * coff[3] +
+                     slm_buffer[5] * coff[4] +
+                     value * coff[0]) /
+                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+
+    //out_data[0].w = 0.0f; out_data[1].w = 0.0f; out_data[2].w = 0.0f; out_data[3].w = 0.0f;
+#if 0
+    uint4 data1, data2;
+    data1.x = convert_ushort_sat (out_data[0].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[0].y * 65536.0f)) << 16);
+    data1.y = convert_ushort_sat (out_data[0].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[0].w * 65536.0f)) << 16);
+    data1.z = convert_ushort_sat (out_data[1].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[1].y * 65536.0f)) << 16);
+    data1.w = convert_ushort_sat (out_data[1].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[1].w * 65536.0f)) << 16);
+    write_imageui (out, (int2)(out_x, out_y), data1);
+
+    data1.x = convert_ushort_sat (out_data[2].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[2].y * 65536.0f)) << 16);
+    data1.y = convert_ushort_sat (out_data[2].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[2].w * 65536.0f)) << 16);
+    data1.z = convert_ushort_sat (out_data[3].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[3].y * 65536.0f)) << 16);
+    data1.w = convert_ushort_sat (out_data[3].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[3].w * 65536.0f)) << 16);
+    write_imageui (out, (int2)(out_x, out_y + 1), data1);
+#else
+    write_imagef(out, (int2)(out_x, out_y), out_data[0]);
+    write_imagef(out, (int2)(out_x + 1, out_y), out_data[1]);
+    write_imagef(out, (int2)(out_x, out_y + 1), out_data[2]);
+    write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data[3]);
+#endif
+}
+
 void shared_demosaic (
     __local float *x_data_in, __local float *y_data_in, __local float *z_data_in, __local float *w_data_in,
     int in_x, int in_y,
@@ -411,7 +634,23 @@ void shared_demosaic (
     uint has_denoise)
 {
     float4 out_data;
+    shared_demosaic_denoise (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y, out, out_x, out_y);
+#if 0
+    {
+        out_data = demosaic_denoise_x0y0_gr (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
+        write_imagef(out, (int2)(out_x, out_y), out_data);
 
+        out_data = demosaic_denoise_x1y0_r (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
+        write_imagef(out, (int2)(out_x + 1, out_y), out_data);
+
+        out_data = demosaic_denoise_x0y1_b (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
+        write_imagef(out, (int2)(out_x, out_y + 1), out_data);
+
+        out_data = demosaic_denoise_x1y1_gb (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
+        write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data);
+    }
+
+//#else
     if (has_denoise) {
         out_data = demosaic_denoise_x0y0_gr (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
         write_imagef(out, (int2)(out_x, out_y), out_data);
@@ -439,7 +678,7 @@ void shared_demosaic (
         out_data = demosaic_x1y1_gb (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
         write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data);
     }
-
+#endif
 }
 
 inline void stats_3a_calculate (
