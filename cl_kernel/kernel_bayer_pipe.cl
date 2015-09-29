@@ -410,22 +410,31 @@ void shared_demosaic_denoise (
     __write_only image2d_t out, int out_x, int out_y)
 {
     float slm_buffer[9];
+    //float3 slm_buffer[3];
     float4 out_data[4];
     float coff[5];
     float value;
+    int index;
+    float3 tmp;
 
     coff[0] = DEFAULT_DELTA_COFF;
 
 ////////////////////////////////R////////////////////////////////////////////////
-    slm_buffer[0] = y_data_in[shared_pos(in_x - 1, in_y - 1)];
-    slm_buffer[1] = y_data_in[shared_pos(in_x, in_y - 1)];
-    slm_buffer[2] = y_data_in[shared_pos(in_x + 1, in_y - 1)];
-    slm_buffer[3] = y_data_in[shared_pos(in_x - 1, in_y)];
-    slm_buffer[4] = y_data_in[shared_pos(in_x, in_y)];
-    slm_buffer[5] = y_data_in[shared_pos(in_x + 1, in_y)];
-    slm_buffer[6] = y_data_in[shared_pos(in_x - 1, in_y + 1)];
-    slm_buffer[7] = y_data_in[shared_pos(in_x, in_y + 1)];
-    slm_buffer[8] = y_data_in[shared_pos(in_x + 1, in_y + 1)];
+    index = shared_pos (in_x - 1, in_y - 1);
+    tmp = vload3 (index / 3, y_data_in + index % 3);
+    slm_buffer[0] = tmp.x;
+    slm_buffer[1] = tmp.y;
+    slm_buffer[2] = tmp.z;
+    index = shared_pos (in_x - 1, in_y);
+    tmp = vload3 (index / 3, y_data_in + index % 3);
+    slm_buffer[3] = tmp.x;
+    slm_buffer[4] = tmp.y;
+    slm_buffer[5] = tmp.z;
+    index = shared_pos (in_x - 1, in_y + 1);
+    tmp = vload3 (index / 3, y_data_in + index % 3);
+    slm_buffer[6] = tmp.x;
+    slm_buffer[7] = tmp.y;
+    slm_buffer[8] = tmp.z;
 
     value = (slm_buffer[3] + slm_buffer[4]) * 0.5f;
     coff[1] = delta_coff(slm_buffer[0] - value);
@@ -477,16 +486,21 @@ void shared_demosaic_denoise (
                     (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
 
 ////////////////////////////////B////////////////////////////////////////////////
-
-    slm_buffer[0] = z_data_in[shared_pos(in_x - 1, in_y - 1)];
-    slm_buffer[1] = z_data_in[shared_pos(in_x, in_y - 1)];
-    slm_buffer[2] = z_data_in[shared_pos(in_x + 1, in_y - 1)];
-    slm_buffer[3] = z_data_in[shared_pos(in_x - 1, in_y)];
-    slm_buffer[4] = z_data_in[shared_pos(in_x, in_y)];
-    slm_buffer[5] = z_data_in[shared_pos(in_x + 1, in_y)];
-    slm_buffer[6] = z_data_in[shared_pos(in_x - 1, in_y + 1)];
-    slm_buffer[7] = z_data_in[shared_pos(in_x, in_y + 1)];
-    slm_buffer[8] = z_data_in[shared_pos(in_x + 1, in_y + 1)];
+    index = shared_pos (in_x - 1, in_y - 1);
+    tmp = vload3 (index / 3, z_data_in + index % 3);
+    slm_buffer[0] = tmp.x;
+    slm_buffer[1] = tmp.y;
+    slm_buffer[2] = tmp.z;
+    index = shared_pos (in_x - 1, in_y);
+    tmp = vload3 (index / 3, z_data_in + index % 3);
+    slm_buffer[3] = tmp.x;
+    slm_buffer[4] = tmp.y;
+    slm_buffer[5] = tmp.z;
+    index = shared_pos (in_x - 1, in_y + 1);
+    tmp = vload3 (index / 3, z_data_in + index % 3);
+    slm_buffer[6] = tmp.x;
+    slm_buffer[7] = tmp.y;
+    slm_buffer[8] = tmp.z;
 
     value = (slm_buffer[1] + slm_buffer[4]) * 0.5f;
     coff[1] = delta_coff(slm_buffer[0] - value);
@@ -538,16 +552,23 @@ void shared_demosaic_denoise (
                     (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
 
 ///////////////////////////////////////G//////////////////////////////////////////////////////////
-
-    slm_buffer[0] = x_data_in[shared_pos(in_x, in_y - 1)];
-    slm_buffer[1] = x_data_in[shared_pos(in_x - 1, in_y)];
-    slm_buffer[2] = x_data_in[shared_pos(in_x, in_y)];
-    slm_buffer[3] = x_data_in[shared_pos(in_x + 1, in_y)];
-    slm_buffer[4] = x_data_in[shared_pos(in_x, in_y + 1)];
-    slm_buffer[5] = w_data_in[shared_pos(in_x - 1, in_y - 1)];
-    slm_buffer[6] = w_data_in[shared_pos(in_x, in_y - 1)];
-    slm_buffer[7] = w_data_in[shared_pos(in_x - 1, in_y)];
-    slm_buffer[8] = w_data_in[shared_pos(in_x, in_y)];
+    {
+        index = shared_pos (in_x - 1, in_y - 1);
+        tmp = vload3 (index / 3, x_data_in + index % 3);
+        slm_buffer[0] = tmp.x;
+        slm_buffer[1] = tmp.y;
+        slm_buffer[2] = tmp.z;
+        index = shared_pos (in_x - 1, in_y);
+        float2 tmp2 = vload2 (index / 2, x_data_in + index % 2);
+        slm_buffer[3] = tmp.x;
+        slm_buffer[4] = tmp.y;
+        slm_buffer[5] = w_data_in[shared_pos(in_x - 1, in_y - 1)];
+        index = shared_pos (in_x - 1, in_y + 1);
+        tmp = vload3 (index / 3, w_data_in + index % 3);
+        slm_buffer[6] = tmp.x;
+        slm_buffer[7] = tmp.y;
+        slm_buffer[8] = tmp.z;
+    }
 
     value = (slm_buffer[2] * 4.0f + slm_buffer[5] +
              slm_buffer[6] + slm_buffer[7] + slm_buffer[8]) * 0.125f;
