@@ -572,7 +572,6 @@ inline void stats_3a_calculate (
     int g_id_x = get_global_id (0);
     int g_id_y = get_global_id (1);
     int g_size_x = get_global_size (0);
-    int g_size_y = get_global_size (1);
 
     int l_id_x = get_local_id(0);
     int l_id_y = get_local_id(1);
@@ -594,7 +593,7 @@ inline void stats_3a_calculate (
 
     if (l_id_x % STATS_3A_GRID_SIZE == 0 && l_id_y % STATS_3A_GRID_SIZE == 0) {
         float4 tmp_data;
-        int out_index = mad24(g_id_y / STATS_3A_GRID_SIZE,  g_size_x / STATS_3A_GRID_SIZE, g_id_x / STATS_3A_GRID_SIZE);
+        int out_index = mad24(g_id_y / get_local_size(1),  g_size_x / get_local_size(0), g_id_x / get_local_size(0));
         tmp_data = input[shared_pos (l_id_x + SHARED_GRID_X_OFFSET, l_id_y + SHARED_GRID_Y_OFFSET)];
         stats_output[out_index].avg_gr = convert_uchar_sat(tmp_data.x * 255.0f);
         stats_output[out_index].avg_r = convert_uchar_sat(tmp_data.y * 255.0f);
@@ -635,8 +634,8 @@ __kernel void kernel_bayer_pipe (__read_only image2d_t input,
     __local float4 *stats_cache = p2;
 
     int out_x_start, out_y_start;
-    int x_start = (g_id_x - l_id_x) * WORK_ITEM_X_SIZE - SHARED_PIXEL_X_OFFSET;
-    int y_start = (g_id_y - l_id_y) * WORK_ITEM_Y_SIZE - SHARED_PIXEL_Y_OFFSET;
+    int x_start = (g_id_x / l_size_x) * SHARED_PIXEL_WIDTH - SHARED_PIXEL_X_OFFSET;
+    int y_start = (g_id_y / l_size_y) * SHARED_PIXEL_WIDTH - SHARED_PIXEL_Y_OFFSET;
     int i = l_id_x + l_id_y * l_size_x;
 
     for (; i < SHARED_GRID_X_SIZE * SHARED_GRID_Y_SIZE; i += l_size_x * l_size_y) {

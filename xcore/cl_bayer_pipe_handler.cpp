@@ -22,8 +22,8 @@
 #include "xcam_utils.h"
 #include "cl_bayer_pipe_handler.h"
 
-#define SHARED_PIXEL_WIDTH 16
-#define SHARED_PIXEL_HEIGHT 16
+#define WORK_GROUP_PIXEL_WIDTH 16
+#define WORK_GROUP_PIXEL_HEIGHT 16
 
 #define WORK_ITEM_X_SIZE 2
 #define WORK_ITEM_Y_SIZE 2
@@ -352,10 +352,10 @@ CLBayerPipeImageKernel::prepare_arguments (
     arg_count = 8;
 
     work_size.dim = XCAM_DEFAULT_IMAGE_DIM;
-    work_size.global[0] = XCAM_ALIGN_UP(out_video_info.width, 16) / WORK_ITEM_X_SIZE;
-    work_size.global[1] = XCAM_ALIGN_UP(out_video_info.height, 16) / WORK_ITEM_Y_SIZE;
-    work_size.local[0] = SHARED_PIXEL_WIDTH / WORK_ITEM_X_SIZE;
-    work_size.local[1] = SHARED_PIXEL_HEIGHT / WORK_ITEM_Y_SIZE;
+    work_size.local[0] = 8;
+    work_size.local[1] = 8;
+    work_size.global[0] = XCAM_ALIGN_UP(out_video_info.width, 16) / WORK_GROUP_PIXEL_WIDTH * work_size.local[0];
+    work_size.global[1] = XCAM_ALIGN_UP(out_video_info.height, 16) / WORK_GROUP_PIXEL_HEIGHT * work_size.local[1];
 
     _output_buffer = output;
 
