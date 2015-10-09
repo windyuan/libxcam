@@ -404,249 +404,111 @@ demosaic_denoise_x1y1_gb (__local float *in_x, __local float *in_y, __local floa
     return out_data;
 }
 
-void shared_demosaic_denoise (
+float dot_denoise (float value, float in1, float in2, float in3, float in4)
+{
+    float coff0, coff1, coff2, coff3, coff4, coff5;
+    coff0 = DEFAULT_DELTA_COFF;
+    coff1 = delta_coff (in1 - value);
+    coff2 = delta_coff (in2 - value);
+    coff3 = delta_coff (in3 - value);
+    coff4 = delta_coff (in4 - value);
+    return  (in1 * coff1 + in2 * coff2 + in3 * coff3 + in4 * coff4 + value * coff0) /
+            (coff0 + coff1 + coff2 + coff3 + coff4);
+}
+
+void shared_demosaic_denoise_2_cell (
     __local float *x_data_in, __local float *y_data_in, __local float *z_data_in, __local float *w_data_in,
     int in_x, int in_y,
     __write_only image2d_t out, int out_x, int out_y)
 {
-    float slm_buffer[9];
-    //float3 slm_buffer[3];
-    float4 out_data[4];
-    float coff[5];
+    float4 out_data1[4], out_data2[4];
     float value;
     int index;
     float3 tmp;
 
-    coff[0] = DEFAULT_DELTA_COFF;
-
 ////////////////////////////////R////////////////////////////////////////////////
-    index = shared_pos (in_x - 1, in_y - 1);
-    tmp = vload3 (index / 3, y_data_in + index % 3);
-    slm_buffer[0] = tmp.x;
-    slm_buffer[1] = tmp.y;
-    slm_buffer[2] = tmp.z;
-    index = shared_pos (in_x - 1, in_y);
-    tmp = vload3 (index / 3, y_data_in + index % 3);
-    slm_buffer[3] = tmp.x;
-    slm_buffer[4] = tmp.y;
-    slm_buffer[5] = tmp.z;
-    index = shared_pos (in_x - 1, in_y + 1);
-    tmp = vload3 (index / 3, y_data_in + index % 3);
-    slm_buffer[6] = tmp.x;
-    slm_buffer[7] = tmp.y;
-    slm_buffer[8] = tmp.z;
+    {
+        float4 slm_buffer[3];
+        index = shared_pos (in_x - 1, in_y - 1);
+        slm_buffer[0] = vload4 (index / 4, y_data_in + index % 4);
+        index = shared_pos (in_x - 1, in_y);
+        slm_buffer[1] = vload4 (index / 4, y_data_in + index % 4);
+        index = shared_pos (in_x - 1, in_y + 1);
+        slm_buffer[2] = vload4 (index / 4, y_data_in + index % 4);
 
-    value = (slm_buffer[3] + slm_buffer[4]) * 0.5f;
-    coff[1] = delta_coff(slm_buffer[0] - value);
-    coff[2] = delta_coff(slm_buffer[1] - value);
-    coff[3] = delta_coff(slm_buffer[6] - value);
-    coff[4] = delta_coff(slm_buffer[7] - value);
-    out_data[0].x = (slm_buffer[0] * coff[1] +
-                     slm_buffer[1] * coff[2] +
-                     slm_buffer[6] * coff[3] +
-                     slm_buffer[7] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[1].s0 + slm_buffer[1].s1) * 0.5f;
+        out_data1[0].x = dot_denoise (value, slm_buffer[0].s0, slm_buffer[0].s1, slm_buffer[2].s0, slm_buffer[2].s1);
 
-    value = slm_buffer[4];
-    coff[1] = delta_coff(slm_buffer[1] - value);
-    coff[2] = delta_coff(slm_buffer[3] - value);
-    coff[3] = delta_coff(slm_buffer[5] - value);
-    coff[4] = delta_coff(slm_buffer[7] - value);
-    out_data[1].x = (slm_buffer[1] * coff[1] +
-                     slm_buffer[3] * coff[2] +
-                     slm_buffer[5] * coff[3] +
-                     slm_buffer[7] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = slm_buffer[1].s1;
+        out_data1[1].x = dot_denoise (value, slm_buffer[0].s1, slm_buffer[1].s0, slm_buffer[1].s2, slm_buffer[2].s1);
 
-    value = (slm_buffer[3] + slm_buffer[4] +
-             slm_buffer[6] + slm_buffer[7]) * 0.25f;
-    coff[1] = delta_coff(slm_buffer[3] - value);
-    coff[2] = delta_coff(slm_buffer[4] - value);
-    coff[3] = delta_coff(slm_buffer[6] - value);
-    coff[4] = delta_coff(slm_buffer[7] - value);
-    out_data[2].x = (slm_buffer[3] * coff[1] +
-                     slm_buffer[4] * coff[2] +
-                     slm_buffer[6] * coff[3] +
-                     slm_buffer[7] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[1].s0 + slm_buffer[1].s1 +
+                 slm_buffer[2].s0 + slm_buffer[2].s1) * 0.25f;
+        out_data1[2].x = dot_denoise (value, slm_buffer[1].s0, slm_buffer[1].s1, slm_buffer[2].s0, slm_buffer[2].s1);
 
-    value = (slm_buffer[4] + slm_buffer[7]) * 0.5f;
-    coff[1] = delta_coff(slm_buffer[3] - value);
-    coff[2] = delta_coff(slm_buffer[5] - value);
-    coff[3] = delta_coff(slm_buffer[6] - value);
-    coff[4] = delta_coff(slm_buffer[8] - value);
-    out_data[3].x = (slm_buffer[3] * coff[1] +
-                     slm_buffer[5] * coff[2] +
-                     slm_buffer[6] * coff[3] +
-                     slm_buffer[8] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[1].s1 + slm_buffer[2].s1) * 0.5f;
+        out_data1[3].x = dot_denoise (value, slm_buffer[1].s0, slm_buffer[1].s2, slm_buffer[2].s0, slm_buffer[2].s2);
+    }
 
-////////////////////////////////B////////////////////////////////////////////////
-    index = shared_pos (in_x - 1, in_y - 1);
-    tmp = vload3 (index / 3, z_data_in + index % 3);
-    slm_buffer[0] = tmp.x;
-    slm_buffer[1] = tmp.y;
-    slm_buffer[2] = tmp.z;
-    index = shared_pos (in_x - 1, in_y);
-    tmp = vload3 (index / 3, z_data_in + index % 3);
-    slm_buffer[3] = tmp.x;
-    slm_buffer[4] = tmp.y;
-    slm_buffer[5] = tmp.z;
-    index = shared_pos (in_x - 1, in_y + 1);
-    tmp = vload3 (index / 3, z_data_in + index % 3);
-    slm_buffer[6] = tmp.x;
-    slm_buffer[7] = tmp.y;
-    slm_buffer[8] = tmp.z;
+    ////////////////////////////////B////////////////////////////////////////////////
+    {
+        float4 slm_buffer[3];
+        index = shared_pos (in_x - 1, in_y - 1);
+        slm_buffer[0] = vload4 (index / 4, z_data_in + index % 4);
+        index = shared_pos (in_x - 1, in_y);
+        slm_buffer[1] = vload4 (index / 4, z_data_in + index % 4);
+        index = shared_pos (in_x - 1, in_y + 1);
+        slm_buffer[2] = vload4 (index / 4, z_data_in + index % 4);
 
-    value = (slm_buffer[1] + slm_buffer[4]) * 0.5f;
-    coff[1] = delta_coff(slm_buffer[0] - value);
-    coff[2] = delta_coff(slm_buffer[2] - value);
-    coff[3] = delta_coff(slm_buffer[3] - value);
-    coff[4] = delta_coff(slm_buffer[5] - value);
-    out_data[0].z = (slm_buffer[0] * coff[1] +
-                     slm_buffer[2] * coff[2] +
-                     slm_buffer[3] * coff[3] +
-                     slm_buffer[5] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[0].s1 + slm_buffer[1].s1) * 0.5f;
+        out_data1[0].z = dot_denoise (value, slm_buffer[0].s0, slm_buffer[0].s2, slm_buffer[1].s0, slm_buffer[1].s2);
 
-    value = (slm_buffer[1] + slm_buffer[2] +
-             slm_buffer[4] + slm_buffer[5]) * 0.25f;
-    coff[1] = delta_coff(slm_buffer[1] - value);
-    coff[2] = delta_coff(slm_buffer[2] - value);
-    coff[3] = delta_coff(slm_buffer[4] - value);
-    coff[4] = delta_coff(slm_buffer[5] - value);
-    out_data[1].z = (slm_buffer[1] * coff[1] +
-                     slm_buffer[2] * coff[2] +
-                     slm_buffer[4] * coff[3] +
-                     slm_buffer[5] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[0].s1 + slm_buffer[0].s2 +
+                 slm_buffer[1].s1 + slm_buffer[1].s2) * 0.25f;
+        out_data1[1].z = dot_denoise (value, slm_buffer[0].s1, slm_buffer[0].s2, slm_buffer[1].s1, slm_buffer[1].s2);
 
-    value = slm_buffer[4];
-    coff[1] = delta_coff(slm_buffer[1] - value);
-    coff[2] = delta_coff(slm_buffer[3] - value);
-    coff[3] = delta_coff(slm_buffer[5] - value);
-    coff[4] = delta_coff(slm_buffer[7] - value);
-    out_data[2].z = (slm_buffer[1] * coff[1] +
-                     slm_buffer[3] * coff[2] +
-                     slm_buffer[5] * coff[3] +
-                     slm_buffer[7] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = slm_buffer[1].s1;
+        out_data1[2].z = dot_denoise (value, slm_buffer[0].s1, slm_buffer[1].s0, slm_buffer[1].s2, slm_buffer[2].s1);
 
-    value = (slm_buffer[4] + slm_buffer[5]) * 0.5f;
-    coff[1] = delta_coff(slm_buffer[1] - value);
-    coff[2] = delta_coff(slm_buffer[2] - value);
-    coff[3] = delta_coff(slm_buffer[7] - value);
-    coff[4] = delta_coff(slm_buffer[8] - value);
-    out_data[3].z = (slm_buffer[1] * coff[1] +
-                     slm_buffer[2] * coff[2] +
-                     slm_buffer[7] * coff[3] +
-                     slm_buffer[8] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
+        value = (slm_buffer[1].s1 + slm_buffer[1].s2) * 0.5f;
+        out_data1[3].z = dot_denoise (value, slm_buffer[0].s1, slm_buffer[0].s2, slm_buffer[2].s1, slm_buffer[2].s2);
+    }
 
 ///////////////////////////////////////G//////////////////////////////////////////////////////////
     {
+        float3 slm_gr[2], slm_gb[2];
         index = shared_pos (in_x - 1, in_y - 1);
-        tmp = vload3 (index / 3, x_data_in + index % 3);
-        slm_buffer[0] = tmp.x;
-        slm_buffer[1] = tmp.y;
-        slm_buffer[2] = tmp.z;
+        slm_gb[0] = vload3 (index / 3, w_data_in + index % 3);
         index = shared_pos (in_x - 1, in_y);
-        float2 tmp2 = vload2 (index / 2, x_data_in + index % 2);
-        slm_buffer[3] = tmp.x;
-        slm_buffer[4] = tmp.y;
-        slm_buffer[5] = w_data_in[shared_pos(in_x - 1, in_y - 1)];
-        index = shared_pos (in_x - 1, in_y + 1);
-        tmp = vload3 (index / 3, w_data_in + index % 3);
-        slm_buffer[6] = tmp.x;
-        slm_buffer[7] = tmp.y;
-        slm_buffer[8] = tmp.z;
+        slm_gb[1] = vload3 (index / 3, w_data_in + index % 3);
+
+        index = shared_pos (in_x, in_y);
+        slm_gr[0] = vload3 (index / 3, x_data_in + index % 3);
+        index = shared_pos (in_x, in_y + 1);
+        slm_gr[1] = vload3 (index / 3, x_data_in + index % 3);
+
+        value = (slm_gr[0].s0 * 4.0f + slm_gb[0].s0 +
+                 slm_gb[0].s1 + slm_gb[1].s0 + slm_gb[1].s1) * 0.125f;
+        out_data1[0].y = dot_denoise (value, slm_gb[0].s0, slm_gb[0].s1, slm_gb[1].s0, slm_gb[1].s1);
+
+        value = (slm_gr[0].s0 + slm_gr[0].s1 +
+                 slm_gb[0].s1 + slm_gb[1].s1) * 0.25f;
+        out_data1[1].y = dot_denoise(value, slm_gr[0].s0, slm_gr[0].s1, slm_gb[0].s1, slm_gb[1].s1);
+
+        value = (slm_gr[0].s0 + slm_gr[1].s0 +
+                 slm_gb[1].s0 + slm_gb[1].s1) * 0.25f;
+        out_data1[2].y = dot_denoise (value, slm_gr[0].s0, slm_gr[1].s0, slm_gb[1].s0, slm_gb[1].s1);
+
+        value = (slm_gb[1].s1 * 4.0f + slm_gr[0].s0 +
+                 slm_gr[0].s1 + slm_gr[1].s0 + slm_gr[1].s1) * 0.125f;
+        out_data1[3].y = dot_denoise (value, slm_gr[0].s0, slm_gr[0].s1, slm_gr[1].s0, slm_gr[1].s1);
     }
-
-    value = (slm_buffer[2] * 4.0f + slm_buffer[5] +
-             slm_buffer[6] + slm_buffer[7] + slm_buffer[8]) * 0.125f;
-    coff[1] = delta_coff(slm_buffer[0] - value);
-    coff[2] = delta_coff(slm_buffer[1] - value);
-    coff[3] = delta_coff(slm_buffer[3] - value);
-    coff[4] = delta_coff(slm_buffer[4] - value);
-    out_data[0].y = (slm_buffer[0] * coff[1] +
-                     slm_buffer[1] * coff[2] +
-                     slm_buffer[3] * coff[3] +
-                     slm_buffer[4] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
-
-    value = (slm_buffer[2] + slm_buffer[8] +
-             slm_buffer[3] + slm_buffer[6]) * 0.25f;
-    coff[1] = delta_coff(slm_buffer[2] - value);
-    coff[2] = delta_coff(slm_buffer[8] - value);
-    coff[3] = delta_coff(slm_buffer[3] - value);
-    coff[4] = delta_coff(slm_buffer[6] - value);
-    out_data[1].y = (slm_buffer[2] * coff[1] +
-                     slm_buffer[8] * coff[2] +
-                     slm_buffer[3] * coff[3] +
-                     slm_buffer[6] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
-
-    value = (slm_buffer[2] + slm_buffer[8] +
-             slm_buffer[7] + slm_buffer[4]) * 0.25f;
-    coff[1] = delta_coff(slm_buffer[2] - value);
-    coff[2] = delta_coff(slm_buffer[8] - value);
-    coff[3] = delta_coff(slm_buffer[7] - value);
-    coff[4] = delta_coff(slm_buffer[4] - value);
-    out_data[2].y = (slm_buffer[2] * coff[1] +
-                     slm_buffer[8] * coff[2] +
-                     slm_buffer[7] * coff[3] +
-                     slm_buffer[4] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
-
-    slm_buffer[0] = x_data_in[shared_pos(in_x + 1, in_y + 1)];
-    slm_buffer[1] = w_data_in[shared_pos(in_x + 1, in_y)];
-    slm_buffer[5] = w_data_in[shared_pos(in_x, in_y + 1)];
-
-    value = (slm_buffer[8] * 4.0f + slm_buffer[2] +
-             slm_buffer[3] + slm_buffer[4] + slm_buffer[0]) * 0.125f;
-    coff[1] = delta_coff(slm_buffer[6] - value);
-    coff[2] = delta_coff(slm_buffer[7] - value);
-    coff[3] = delta_coff(slm_buffer[1] - value);
-    coff[4] = delta_coff(slm_buffer[5] - value);
-    out_data[3].y = (slm_buffer[6] * coff[1] +
-                     slm_buffer[7] * coff[2] +
-                     slm_buffer[1] * coff[3] +
-                     slm_buffer[5] * coff[4] +
-                     value * coff[0]) /
-                    (coff[0] + coff[1] + coff[2] + coff[3] + coff[4]);
-
-    //out_data[0].w = 0.0f; out_data[1].w = 0.0f; out_data[2].w = 0.0f; out_data[3].w = 0.0f;
-#if 0
-    uint4 data1, data2;
-    data1.x = convert_ushort_sat (out_data[0].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[0].y * 65536.0f)) << 16);
-    data1.y = convert_ushort_sat (out_data[0].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[0].w * 65536.0f)) << 16);
-    data1.z = convert_ushort_sat (out_data[1].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[1].y * 65536.0f)) << 16);
-    data1.w = convert_ushort_sat (out_data[1].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[1].w * 65536.0f)) << 16);
-    write_imageui (out, (int2)(out_x, out_y), data1);
-
-    data1.x = convert_ushort_sat (out_data[2].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[2].y * 65536.0f)) << 16);
-    data1.y = convert_ushort_sat (out_data[2].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[2].w * 65536.0f)) << 16);
-    data1.z = convert_ushort_sat (out_data[3].x * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[3].y * 65536.0f)) << 16);
-    data1.w = convert_ushort_sat (out_data[3].z * 65536.0f) | (convert_uint(convert_ushort_sat(out_data[3].w * 65536.0f)) << 16);
-    write_imageui (out, (int2)(out_x, out_y + 1), data1);
-#else
-    write_imagef(out, (int2)(out_x, out_y), out_data[0]);
-    write_imagef(out, (int2)(out_x + 1, out_y), out_data[1]);
-    write_imagef(out, (int2)(out_x, out_y + 1), out_data[2]);
-    write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data[3]);
-#endif
+    write_imagef(out, (int2)(out_x, out_y), out_data1[0]);
+    write_imagef(out, (int2)(out_x + 1, out_y), out_data1[1]);
+    write_imagef(out, (int2)(out_x, out_y + 1), out_data1[2]);
+    write_imagef(out, (int2)(out_x + 1, out_y + 1), out_data1[3]);
 }
+
 
 void shared_demosaic (
     __local float *x_data_in, __local float *y_data_in, __local float *z_data_in, __local float *w_data_in,
@@ -654,8 +516,8 @@ void shared_demosaic (
     __write_only image2d_t out, int out_x, int out_y,
     uint has_denoise)
 {
-    float4 out_data;
-    shared_demosaic_denoise (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y, out, out_x, out_y);
+    //float4 out_data;
+    shared_demosaic_denoise_2_cell (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y, out, out_x, out_y);
 #if 0
     {
         out_data = demosaic_denoise_x0y0_gr (x_data_in, y_data_in, z_data_in, w_data_in, in_x, in_y);
