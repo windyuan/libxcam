@@ -121,6 +121,20 @@ inline float4 simple_calculate (
     float4 data;
     int x0 = get_shared_pos_x (index) * WORK_ITEM_X_SIZE + x_start;
     int y0 = get_shared_pos_y (index) * WORK_ITEM_Y_SIZE + y_start;
+
+    int g_id_x = get_global_id (0);
+    int g_id_y = get_global_id (1);
+    int l_size_x = get_local_size (0);
+    int l_size_y = get_local_size (1);
+
+    int x_min = (g_id_x / l_size_x) * SHARED_PIXEL_WIDTH;
+    int y_min = (g_id_y / l_size_y) * SHARED_PIXEL_HEIGHT;
+    int x_max = x_min + SHARED_PIXEL_WIDTH - 2;
+    int y_max = y_min + SHARED_PIXEL_HEIGHT - 2;
+
+    x0 = clamp (x0, x_min, x_max);
+    y0 = clamp (y0, y_min, y_max);
+
     //Gr
     data.x = read_imagef (input, sampler, (int2)(x0, y0)).x;
     //R
