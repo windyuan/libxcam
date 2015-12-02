@@ -40,6 +40,7 @@
 #include "cl_biyuv_handler.h"
 #include "cl_image_scaler.h"
 #include "cl_bayer_basic_handler.h"
+#include "cl_bayer_horiz_nr_handler.h"
 
 #define XCAM_CL_3A_IMAGE_MAX_POOL_SIZE 6
 #define XCAM_CL_3A_IMAGE_SCALER_FACTOR 0.5
@@ -360,6 +361,47 @@ CL3aImageProcessor::create_handlers ()
     image_handler->set_pool_size (XCAM_CL_3A_IMAGE_MAX_POOL_SIZE);
     add_handler (image_handler);
 
+    // horizontal noise reduction
+    image_handler = create_cl_bayer_horiz_nr_image_handler (context);
+    XCAM_FAIL_RETURN (
+        WARNING,
+        image_handler.ptr (),
+        XCAM_RETURN_ERROR_CL,
+        "CL3aImageProcessor create bayer horizontal NR handler failed");
+    image_handler->set_pool_size (XCAM_CL_3A_IMAGE_MAX_POOL_SIZE);
+    add_handler (image_handler);
+
+    // rotation 0
+    image_handler = create_cl_bayer_rotation_image_handler (context);
+    XCAM_FAIL_RETURN (
+        WARNING,
+        image_handler.ptr (),
+        XCAM_RETURN_ERROR_CL,
+        "CL3aImageProcessor create bayer rotation handler failed");
+    image_handler->set_pool_size (XCAM_CL_3A_IMAGE_MAX_POOL_SIZE);
+    add_handler (image_handler);
+
+    // horizontal noise reduction
+    image_handler = create_cl_bayer_horiz_nr_image_handler (context);
+    XCAM_FAIL_RETURN (
+        WARNING,
+        image_handler.ptr (),
+        XCAM_RETURN_ERROR_CL,
+        "CL3aImageProcessor create bayer horizontal NR handler failed");
+    image_handler->set_pool_size (XCAM_CL_3A_IMAGE_MAX_POOL_SIZE);
+    add_handler (image_handler);
+
+    // rotation 1
+    image_handler = create_cl_bayer_rotation_image_handler (context);
+    XCAM_FAIL_RETURN (
+        WARNING,
+        image_handler.ptr (),
+        XCAM_RETURN_ERROR_CL,
+        "CL3aImageProcessor create bayer rotation handler failed");
+    image_handler->set_pool_size (XCAM_CL_3A_IMAGE_MAX_POOL_SIZE);
+    add_handler (image_handler);
+
+    // bayer demosaic
     image_handler = create_cl_bayer_pipe_image_handler (context);
     _bayer_pipe = image_handler.dynamic_cast_ptr<CLBayerPipeImageHandler> ();
     XCAM_FAIL_RETURN (

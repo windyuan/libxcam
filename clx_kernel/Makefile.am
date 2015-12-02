@@ -17,7 +17,9 @@ clx_kernel_sources = \
 	kernel_tnr_rgb.clx            \
 	kernel_tnr_yuv.clx            \
 	kernel_bayer_pipe.clx         \
-	kernel_bayer_basic.clx         \
+	kernel_bayer_basic.clx        \
+	kernel_bayer_horiz_nr.clx     \
+	kernel_rotation.clx           \
 	kernel_wb.clx                 \
 	kernel_ee.clx                 \
 	kernel_dpc.clx                \

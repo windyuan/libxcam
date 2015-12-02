@@ -168,10 +168,10 @@ CLYuvPipeImageKernel::prepare_arguments (
     arg_count = 11;
 
     work_size.dim = XCAM_DEFAULT_IMAGE_DIM;
-    work_size.global[0] = video_info_out.width / 8 ;
-    work_size.global[1] = video_info_out.aligned_height / 2 ;
     work_size.local[0] = 8;
     work_size.local[1] = 4;
+    work_size.global[0] = XCAM_ALIGN_UP(video_info_out.width / 8,  work_size.local[0]);
+    work_size.global[1] = XCAM_ALIGN_UP(video_info_out.aligned_height / 2, work_size.local[1]);
 
     return XCAM_RETURN_NO_ERROR;
 }
