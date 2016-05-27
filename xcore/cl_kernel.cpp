@@ -52,7 +52,8 @@ CLKernel::~CLKernel ()
 void
 CLKernel::destroy ()
 {
-    _context->destroy_kernel_id (_kernel_id);
+    if (!_parent_kernel.ptr ())
+        _context->destroy_kernel_id (_kernel_id);
 }
 
 XCamReturn
@@ -128,6 +129,22 @@ CLKernel::load_from_binary (const uint8_t *binary, size_t length)
         "cl kernel(%s) load from binary failed", XCAM_STR (_name));
 
     _kernel_id = new_kernel_id;
+    return XCAM_RETURN_NO_ERROR;
+}
+
+XCamReturn
+CLKernel::load_from_kernel (SmartPtr<CLKernel> kernel)
+{
+    XCAM_FAIL_RETURN(
+        WARNING,
+        kernel.ptr () && kernel->is_valid (),
+        XCAM_RETURN_ERROR_CL,
+        "cl kernel(%s) load from kernel failed", XCAM_STR (_name));
+    _kernel_id = kernel->get_kernel_id ();
+    _parent_kernel = kernel;
+    if (!_name && kernel->get_kernel_name ()) {
+        _name = strndup (kernel->get_kernel_name (), XCAM_MAX_STR_SIZE);
+    }
     return XCAM_RETURN_NO_ERROR;
 }
 

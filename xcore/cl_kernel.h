@@ -39,9 +39,20 @@
 
 #define XCAM_CL_KERNEL_MAX_WORK_DIM 3
 
+XCAM_BEGIN_DECLARE
+
+typedef struct _XCamKernelInfo {
+    const char   *kernel_name;
+    const char   *kernel_body;
+    size_t        kernel_body_len;
+} XCamKernelInfo;
+
+XCAM_END_DECLARE
+
 namespace XCam {
 
 class CLContext;
+class CLKernel;
 
 /*
  * Example to create a kernel
@@ -64,6 +75,7 @@ public:
         size_t *binary_size = NULL,
         const char *build_option = NULL);
     XCamReturn load_from_binary (const uint8_t *binary, size_t length);
+    XCamReturn load_from_kernel (SmartPtr<CLKernel> kernel);
     cl_kernel get_kernel_id () {
         return _kernel_id;
     }
@@ -103,6 +115,7 @@ private:
     char                 *_name;
     cl_kernel             _kernel_id;
     SmartPtr<CLContext>   _context;
+    SmartPtr<CLKernel>    _parent_kernel;
     uint32_t              _work_dim;
     size_t                _global_work_size [XCAM_CL_KERNEL_MAX_WORK_DIM];
     size_t                _local_work_size [XCAM_CL_KERNEL_MAX_WORK_DIM];

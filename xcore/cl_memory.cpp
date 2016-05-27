@@ -364,6 +364,10 @@ CLImage::video_info_2_cl_image_desc (
             " **** XCAM_PIX_FMT_RGB48 need check with cl implementation ****");
         return false;
         break;
+    case V4L2_PIX_FMT_GREY:
+        image_desc.format.image_channel_order = CL_R;
+        image_desc.format.image_channel_data_type = CL_UNORM_INT8;
+        break;
 
     case XCAM_PIX_FMT_RGBA64:
         image_desc.format.image_channel_order = CL_RGBA;
