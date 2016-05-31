@@ -138,7 +138,13 @@ ImageFileHandle::write_buf (SmartPtr<BufferProxy> buf)
 void usage(const char* arg0)
 {
     printf ("Usage:\n"
-            "%s input0 input1 output\n", arg0);
+            "%s input0 input1 output [input-w] [input-h] [output-w] [layers] [need_uv]\n"
+            "\t[input-w], optional, input width; default:1280\n"
+            "\t[input-h], optional, input height; default:960\n"
+            "\t[output-w], optional, output width; default:1920, output height is same as input height.\n"
+            "\t[layers], optional, default 1; choose from [1, 2, 3, 4]\n"
+            "\t[need_uv], optional, default true; choose from [true, false];\n",
+            arg0);
 }
 
 int main (int argc, char *argv[])
@@ -148,7 +154,9 @@ int main (int argc, char *argv[])
     uint32_t input_width = 1280;
     uint32_t input_height = 960;
     uint32_t output_width = 1920;
-    uint32_t output_height = 960;
+    uint32_t output_height = input_height;
+    int layers = 1;
+    bool need_uv = true;
 
     XCamReturn ret = XCAM_RETURN_NO_ERROR;
     SmartPtr<CLImageHandler> image_handler;
@@ -166,6 +174,21 @@ int main (int argc, char *argv[])
         return -1;
     }
 
+    file_in0_name = argv[1];
+    file_in1_name = argv[2];
+    file_out_name = argv[3];
+
+    if (argc > 4)
+        input_width = atoi(argv[4]);
+    if (argc > 5)
+        input_height = atoi(argv[5]);
+    if (argc > 6)
+        output_width = atoi(argv[6]);
+    if (argc > 7)
+        layers = atoi(argv[7]);
+    if (argc > 8)
+        need_uv = (strcasecmp ("false", argv[8]) == 0 ? false : true);
+
     input_buf_info.init (input_format, input_width, input_height);
     display = DrmDisplay::instance ();
     buf_pool = new DrmBoBufferPool (display);
@@ -176,12 +199,8 @@ int main (int argc, char *argv[])
         return -1;
     }
 
-    file_in0_name = argv[1];
-    file_in1_name = argv[2];
-    file_out_name = argv[3];
-
     context = CLDevice::instance ()->get_context ();
-    image_handler = create_pyramid_blender (context, 1);
+    image_handler = create_pyramid_blender (context, layers, need_uv);
     SmartPtr<CLPyramidBlender> blender = image_handler.dynamic_cast_ptr<CLPyramidBlender> ();
     XCAM_ASSERT (blender.ptr ());
     blender->set_output_size (output_width, output_height);

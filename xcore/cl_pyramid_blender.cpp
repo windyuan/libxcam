@@ -54,11 +54,12 @@ PyramidLayer::PyramidLayer ()
     }
 }
 
-CLPyramidBlender::CLPyramidBlender (const char *name, int layers)
+CLPyramidBlender::CLPyramidBlender (const char *name, int layers, bool need_uv)
     : CLImageHandler (name)
     , _layers (0)
     , _output_width (0)
     , _output_height (0)
+    , _need_uv (need_uv)
 {
     if (layers <= 1)
         _layers = 1;
@@ -70,15 +71,6 @@ CLPyramidBlender::CLPyramidBlender (const char *name, int layers)
 
 CLPyramidBlender::~CLPyramidBlender ()
 {
-}
-
-void
-CLPyramidBlender::set_blend_kernel (SmartPtr<CLLinearBlenderKernel> kernel, int index)
-{
-    _blend_kernels[index] = kernel;
-    SmartPtr<CLImageKernel> image_kernel = kernel;
-    XCAM_ASSERT (image_kernel.ptr ());
-    add_kernel (image_kernel);
 }
 
 void
@@ -141,50 +133,104 @@ CLPyramidBlender::prepare_output_buf (SmartPtr<DrmBoBuffer> &input, SmartPtr<Drm
     return ret;
 }
 
+void
+PyramidLayer::bind_buf_to_image (
+    SmartPtr<CLContext> context,
+    SmartPtr<DrmBoBuffer> &input0, SmartPtr<DrmBoBuffer> &input1,
+    SmartPtr<DrmBoBuffer> &output, bool need_uv)
+{
+    const VideoBufferInfo &in0_info = input0->get_video_info ();
+    const VideoBufferInfo &in1_info = input1->get_video_info ();
+    const VideoBufferInfo &out_info = output->get_video_info ();
+    int max_plane = (need_uv ? 2 : 1);
+    uint32_t divider_vert[2] = {1, 2};
+    SmartPtr<CLImage> *gauss[2] = {this->gauss_image, this->gauss_image_uv};
+    SmartPtr<CLImage> *blend[2] = {&this->blend_image, &this->blend_image_uv};
+
+    XCAM_ASSERT (in0_info.height == in1_info.height);
+    XCAM_ASSERT (in0_info.width + in1_info.width >= out_info.width);
+    XCAM_ASSERT (out_info.height == in0_info.height);
+
+    this->width[0] = in0_info.width;
+    this->height[0] = in0_info.height;
+    this->width[1] = in1_info.width;
+    this->height[1] = in1_info.height;
+    this->blend_width = out_info.width;
+    this->blend_height = out_info.height;
+
+    CLImageDesc cl_desc;
+    cl_desc.format.image_channel_data_type = CL_UNSIGNED_INT16;
+    cl_desc.format.image_channel_order = CL_RGBA;
+
+    for (int i_plane = 0; i_plane < max_plane; ++i_plane) {
+        cl_desc.width = in0_info.width / 8;
+        cl_desc.height = in0_info.height / divider_vert[i_plane];
+        cl_desc.row_pitch = in0_info.strides[i_plane];
+        gauss[i_plane][0] = new CLVaImage (context, input0, cl_desc, in0_info.offsets[i_plane]);
+
+        cl_desc.width = in1_info.width / 8;
+        cl_desc.height = in1_info.height / divider_vert[i_plane];;
+        cl_desc.row_pitch = in1_info.strides[i_plane];
+        gauss[i_plane][1] = new CLVaImage (context, input1, cl_desc, in1_info.offsets[i_plane]);
+
+        cl_desc.width = out_info.width / 8;
+        cl_desc.height = out_info.height / divider_vert[i_plane];;
+        cl_desc.row_pitch = out_info.strides[i_plane];
+        blend[i_plane][0] = new CLVaImage (context, output, cl_desc, out_info.offsets[i_plane]);
+    }
+
+}
+
+void PyramidLayer::build_cl_images (SmartPtr<CLContext> context, bool need_lap, bool need_uv)
+{
+    CLImageDesc cl_desc_set;
+    cl_desc_set.format.image_channel_data_type = CL_UNSIGNED_INT16;
+    cl_desc_set.format.image_channel_order = CL_RGBA;
+
+    for (int i_image = 0; i_image < XCAM_CL_BLENDER_IMAGE_NUM; ++i_image) {
+        cl_desc_set.row_pitch = 0;
+        cl_desc_set.width = this->width[i_image] / 8;
+        cl_desc_set.height = this->height[i_image];
+        this->gauss_image[i_image] = new CLImage2D (context, cl_desc_set);
+        XCAM_ASSERT (this->gauss_image[i_image].ptr ());
+        if (need_lap) {
+            this->lap_image[i_image] = new CLImage2D (context, cl_desc_set);
+            XCAM_ASSERT (this->lap_image[i_image].ptr ());
+        }
+
+        if (!need_uv)
+            continue;
+
+        cl_desc_set.height /= 2;
+        this->gauss_image_uv[i_image] = new CLImage2D (context, cl_desc_set);
+        XCAM_ASSERT (this->gauss_image_uv[i_image].ptr ());
+        if (need_lap) {
+            this->lap_image_uv[i_image] = new CLImage2D (context, cl_desc_set);
+            XCAM_ASSERT (this->lap_image_uv[i_image].ptr ());
+        }
+    }
+
+    cl_desc_set.width = this->blend_width / 8;
+    cl_desc_set.height = this->blend_height;
+    this->blend_image = new CLImage2D (context, cl_desc_set);
+    XCAM_ASSERT (this->blend_image.ptr ());
+
+    if (need_uv) {
+        cl_desc_set.height /= 2;
+        this->blend_image_uv = new CLImage2D (context, cl_desc_set);;
+    }
+}
+
 XCamReturn
 CLPyramidBlender::allocate_cl_buffers (
     SmartPtr<DrmBoBuffer> &input0, SmartPtr<DrmBoBuffer> &input1, SmartPtr<DrmBoBuffer> &output)
 {
     uint32_t index = 0;
-    const VideoBufferInfo &in0_info = input0->get_video_info ();
-    const VideoBufferInfo &in1_info = input1->get_video_info ();
-    const VideoBufferInfo &out_info = output->get_video_info ();
     SmartPtr<CLContext> context = CLDevice::instance ()->get_context ();
 
-
-    XCAM_ASSERT (in0_info.height == in1_info.height);
-    XCAM_ASSERT (in0_info.width + in1_info.width >= _output_width);
-    XCAM_ASSERT (_output_height == in0_info.height);
-
-    _pyramid_layers[0].width[0] = in0_info.width;
-    _pyramid_layers[0].height[0] = in0_info.height;
-    _pyramid_layers[0].width[1] = in1_info.width;
-    _pyramid_layers[0].height[1] = in1_info.height;
-    _pyramid_layers[0].blend_width = _output_width;
-    _pyramid_layers[0].blend_height = _output_height;
-
-    CLImageDesc cl_desc;
-
-    cl_desc.format.image_channel_data_type = CL_UNSIGNED_INT16;
-    cl_desc.format.image_channel_order = CL_RGBA;
-    cl_desc.width = in0_info.width / 8;
-    cl_desc.height = in0_info.height;
-    cl_desc.row_pitch = in0_info.strides[0];
-    _pyramid_layers[0].gauss_image[0] = new CLVaImage (context, input0, cl_desc, in0_info.offsets[0]);
-
-    cl_desc.width = in1_info.width / 8;
-    cl_desc.height = in1_info.height;
-    cl_desc.row_pitch = in1_info.strides[0];
-    _pyramid_layers[0].gauss_image[1] = new CLVaImage (context, input1, cl_desc, in1_info.offsets[0]);
-
-    cl_desc.width = out_info.width / 8;
-    cl_desc.height = out_info.height;
-    cl_desc.row_pitch = out_info.strides[0];
-    _pyramid_layers[0].blend_image = new CLVaImage (context, output, cl_desc, out_info.offsets[0]);
+    _pyramid_layers[0].bind_buf_to_image (context, input0, input1, output, _need_uv);
 
     for (index = 1; index < _layers; ++index) {
-        CLImageDesc cl_desc_set;
-
         _pyramid_layers[index].width[0] = (_pyramid_layers[index - 1].width[0] + 1) / 2;
         _pyramid_layers[index].height[0] = (_pyramid_layers[index - 1].height[0] + 1) / 2;
         _pyramid_layers[index].width[1] = (_pyramid_layers[index - 1].width[1] + 1) / 2;
@@ -192,36 +238,16 @@ CLPyramidBlender::allocate_cl_buffers (
         _pyramid_layers[index].blend_width = (_pyramid_layers[index - 1].blend_width + 1) / 2;
         _pyramid_layers[index].blend_height = (_pyramid_layers[index - 1].blend_height + 1) / 2;
 
-        cl_desc_set.format.image_channel_data_type = CL_UNSIGNED_INT16;
-        cl_desc_set.format.image_channel_order = CL_RGBA;
-        cl_desc_set.row_pitch = 0;
-        cl_desc_set.width = _pyramid_layers[index].width[0] / 8;
-        cl_desc_set.height = _pyramid_layers[index].height[0];
-        _pyramid_layers[index].gauss_image[0] = new CLImage2D (context, cl_desc_set);
-        if (index != _layers - 1)
-            _pyramid_layers[index].lap_image[0] = new CLImage2D (context, cl_desc_set);
-
-        cl_desc_set.width = _pyramid_layers[index].width[1] / 8;
-        cl_desc_set.height = _pyramid_layers[index].height[1];
-        _pyramid_layers[index].gauss_image[1] = new CLImage2D (context, cl_desc_set);
-        if (index != _layers - 1)
-            _pyramid_layers[index].lap_image[1] = new CLImage2D (context, cl_desc_set);
-
-        cl_desc_set.width = _pyramid_layers[index].blend_width / 8;
-        cl_desc_set.height = _pyramid_layers[index].blend_height;
-        _pyramid_layers[index].blend_image = new CLImage2D (context, cl_desc_set);
-
-        XCAM_ASSERT (
-            _pyramid_layers[index].gauss_image[0]->is_valid () &&
-            _pyramid_layers[index].gauss_image[1]->is_valid () &&
-            (index == (_layers - 1) || _pyramid_layers[index].lap_image[0]->is_valid ()) &&
-            (index == (_layers - 1) || _pyramid_layers[index].lap_image[1]->is_valid ()) &&
-            _pyramid_layers[index].blend_image->is_valid ());
+        _pyramid_layers[index].build_cl_images (context, (index != _layers - 1), _need_uv);
     }
 
     // last layer lapalacian settings
     _pyramid_layers[_layers - 1].lap_image[0] = _pyramid_layers[_layers - 1].gauss_image[0];
     _pyramid_layers[_layers - 1].lap_image[1] = _pyramid_layers[_layers - 1].gauss_image[1];
+    if (_need_uv) {
+        _pyramid_layers[_layers - 1].lap_image_uv[0] = _pyramid_layers[_layers - 1].gauss_image_uv[0];
+        _pyramid_layers[_layers - 1].lap_image_uv[1] = _pyramid_layers[_layers - 1].gauss_image_uv[1];
+    }
 
     //set merge windows
     for (index = 0; index < _layers; ++index) {
@@ -240,9 +266,10 @@ CLPyramidBlender::allocate_cl_buffers (
 CLLinearBlenderKernel::CLLinearBlenderKernel (
     SmartPtr<CLContext> &context,
     SmartPtr<CLPyramidBlender> &blender,
-    uint32_t index)
+    uint32_t index, bool is_uv)
     : CLImageKernel (context, kernels_info[KernelLinearBlender].kernel_name)
     , _blender (blender)
+    , _is_uv (is_uv)
     , _index (index)
     , _blend_width (0)
 {
@@ -325,7 +352,7 @@ load_kernel(SmartPtr<CLImageKernel> kernel, const XCamKernelInfo& info, const ch
 }
 
 SmartPtr<CLImageHandler>
-create_pyramid_blender (SmartPtr<CLContext> &context, int layer)
+create_pyramid_blender (SmartPtr<CLContext> &context, int layer, bool need_uv)
 {
     XCamReturn ret = XCAM_RETURN_NO_ERROR;
     SmartPtr<CLPyramidBlender> blender;
@@ -337,20 +364,34 @@ create_pyramid_blender (SmartPtr<CLContext> &context, int layer)
         "create_pyramid_blender failed with wrong layer:%d, please set it between %d and %d",
         layer, 1, XCAM_CL_PYRAMID_MAX_LEVEL);
 
-    blender = new CLPyramidBlender ("cl_pyramid_blender", layer);
+    blender = new CLPyramidBlender ("cl_pyramid_blender", layer, need_uv);
     XCAM_ASSERT (blender.ptr ());
 
     for (int i = 0; i < layer; ++i) {
-        SmartPtr<CLLinearBlenderKernel> linear_blend_kernel;
-        linear_blend_kernel = new CLLinearBlenderKernel(context, blender, (uint32_t)i);
+        SmartPtr<CLImageKernel> linear_blend_kernel;
+        char blend_option[1024];
+        linear_blend_kernel = new CLLinearBlenderKernel(context, blender, (uint32_t)i, false);
         XCAM_ASSERT (linear_blend_kernel.ptr ());
-        ret = load_kernel (linear_blend_kernel, kernels_info[KernelLinearBlender]);
+        snprintf (blend_option, sizeof(blend_option), "-DBLEND_UV=%d", 0);
+        ret = load_kernel (linear_blend_kernel, kernels_info[KernelLinearBlender], blend_option);
         XCAM_FAIL_RETURN (
             ERROR,
             ret == XCAM_RETURN_NO_ERROR,
             NULL,
             "build linear blender kernel failed");
-        blender->set_blend_kernel (linear_blend_kernel, i);
+        blender->add_kernel (linear_blend_kernel);
+
+        //UV
+        linear_blend_kernel = new CLLinearBlenderKernel(context, blender, (uint32_t)i, true);
+        XCAM_ASSERT (linear_blend_kernel.ptr ());
+        snprintf (blend_option, sizeof(blend_option), "-DBLEND_UV=%d", 1);
+        ret = load_kernel (linear_blend_kernel, kernels_info[KernelLinearBlender], blend_option);
+        XCAM_FAIL_RETURN (
+            ERROR,
+            ret == XCAM_RETURN_NO_ERROR,
+            NULL,
+            "build linear blender kernel failed");
+        blender->add_kernel (linear_blend_kernel);
     }
 
     return blender;
