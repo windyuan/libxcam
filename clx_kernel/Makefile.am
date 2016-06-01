@@ -39,6 +39,7 @@ clx_kernel_sources = \
 	kernel_wavelet_coeff_variance.clx \
 	kernel_wavelet_coeff_thresholding.clx \
 	kernel_linear_blender.clx     \
+	kernel_gauss_lap_pyramid.clx     \
 	$(NULL)
 
 cl_quote_sh = \

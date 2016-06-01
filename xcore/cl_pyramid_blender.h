@@ -27,6 +27,7 @@
 #define XCAM_CL_PYRAMID_MAX_LEVEL  4
 #define XCAM_CL_BLENDER_IMAGE_NUM  2
 
+
 namespace XCam {
 
 class CLPyramidBlender;
@@ -38,6 +39,12 @@ struct Rect {
     Rect () : pos_x (0), pos_y (0), width (0), height (0) {}
 };
 
+enum {
+    BlendImageIndex = 0,
+    ReconstructImageIndex,
+    BlendImageCount
+};
+
 struct PyramidLayer {
     uint32_t                 width[XCAM_CL_BLENDER_IMAGE_NUM];
     uint32_t                 height[XCAM_CL_BLENDER_IMAGE_NUM];
@@ -46,18 +53,18 @@ struct PyramidLayer {
     Rect                     merge_window;
     SmartPtr<CLImage>        gauss_image[XCAM_CL_BLENDER_IMAGE_NUM];
     SmartPtr<CLImage>        lap_image[XCAM_CL_BLENDER_IMAGE_NUM];
-    SmartPtr<CLImage>        blend_image;
+    SmartPtr<CLImage>        blend_image[BlendImageCount]; // 0 blend-image, 1 reconstruct image
 
     SmartPtr<CLImage>        gauss_image_uv[XCAM_CL_BLENDER_IMAGE_NUM];
     SmartPtr<CLImage>        lap_image_uv[XCAM_CL_BLENDER_IMAGE_NUM];
-    SmartPtr<CLImage>        blend_image_uv;
+    SmartPtr<CLImage>        blend_image_uv[BlendImageCount];
 
     PyramidLayer ();
     void build_cl_images (SmartPtr<CLContext> context, bool need_lap, bool need_uv);
     void bind_buf_to_image (
         SmartPtr<CLContext> context,
         SmartPtr<DrmBoBuffer> &input0, SmartPtr<DrmBoBuffer> &input1,
-        SmartPtr<DrmBoBuffer> &output, bool need_uv);
+        SmartPtr<DrmBoBuffer> &output, bool last_layer, bool need_uv);
 };
 
 class CLLinearBlenderKernel;
@@ -82,6 +89,10 @@ public:
     }
 
     //void set_blend_kernel (SmartPtr<CLLinearBlenderKernel> kernel, int index);
+    SmartPtr<CLImage> get_gauss_image (uint32_t layer, uint32_t buf_index, bool is_uv);
+    SmartPtr<CLImage> get_lap_image (uint32_t layer, uint32_t buf_index, bool is_uv);
+    SmartPtr<CLImage> get_blend_image (uint32_t layer, bool is_uv);
+    SmartPtr<CLImage> get_reconstruct_image (uint32_t layer, bool is_uv);
 
 protected:
     virtual XCamReturn prepare_buffer_pool_video_info (
@@ -93,6 +104,8 @@ protected:
 
 private:
     bool calculate_merge_window (uint32_t width0, uint32_t width1, uint32_t blend_width, Rect &out_window);
+    void last_layer_buffer_redirect ();
+
     XCAM_DEAD_COPY (CLPyramidBlender);
 
 private:
@@ -103,13 +116,12 @@ private:
     PyramidLayer                     _pyramid_layers[XCAM_CL_PYRAMID_MAX_LEVEL];
 };
 
-
 class CLLinearBlenderKernel
     : public CLImageKernel
 {
 public:
     explicit CLLinearBlenderKernel (
-        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender, uint32_t index, bool is_uv);
+        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender, uint32_t layer, bool is_uv);
 
 protected:
     virtual XCamReturn prepare_arguments (
@@ -120,61 +132,35 @@ protected:
     virtual XCamReturn post_execute (SmartPtr<DrmBoBuffer> &output);
 
 private:
-    SmartPtr<CLImage> get_input_0 (uint32_t index) {
-        if (_is_uv)
-            return _blender->_pyramid_layers[index].lap_image_uv[0];
-        return _blender->_pyramid_layers[index].lap_image[0];
+    SmartPtr<CLImage> get_input_0 () {
+        return _blender->get_lap_image (_layer, 0, _is_uv);
     }
-    SmartPtr<CLImage> get_input_1 (uint32_t index) {
-        if (_is_uv)
-            return _blender->_pyramid_layers[index].lap_image_uv[1];
-        return _blender->_pyramid_layers[index].lap_image[1];
+    SmartPtr<CLImage> get_input_1 () {
+        return _blender->get_lap_image (_layer, 1, _is_uv);
     }
-    SmartPtr<CLImage> get_ouput (uint32_t index) {
-        if (_is_uv)
-            return _blender->_pyramid_layers[index].blend_image_uv;
-        return _blender->_pyramid_layers[index].blend_image;
+    SmartPtr<CLImage> get_ouput () {
+        return _blender->get_blend_image (_layer, _is_uv);
     }
-    const Rect &get_merge_window (uint32_t index) {
-        return _blender->_pyramid_layers[index].merge_window;
+    const Rect &get_merge_window () {
+        return _blender->_pyramid_layers[_layer].merge_window;
     }
     XCAM_DEAD_COPY (CLLinearBlenderKernel);
 
 private:
     SmartPtr<CLPyramidBlender>    _blender;
     bool                          _is_uv;
-    uint32_t                      _index;
+    uint32_t                      _layer;
     Rect                          _merge_window;
     uint32_t                      _blend_width;
     uint32_t                      _input_width[XCAM_CL_BLENDER_IMAGE_NUM];
 };
 
-class CLBlendGaussKernel
+class CLPyramidTransformKernel
     : public CLImageKernel
 {
 public:
-    explicit CLBlendGaussKernel (
-        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender, int index);
-
-protected:
-    virtual XCamReturn prepare_arguments (
-        SmartPtr<DrmBoBuffer> &input, SmartPtr<DrmBoBuffer> &output,
-        CLArgument args[], uint32_t &arg_count,
-        CLWorkSize &work_size);
-
-private:
-    XCAM_DEAD_COPY (CLBlendGaussKernel);
-
-    SmartPtr<CLPyramidBlender>         _blender;
-    uint32_t                           _buf_index;
-};
-
-class CLLaplacianKernel
-    : public CLImageKernel
-{
-public:
-    explicit CLLaplacianKernel (
-        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender);
+    explicit CLPyramidTransformKernel (
+        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender, uint32_t layer, uint32_t buf_index, bool is_uv);
 
 protected:
     virtual XCamReturn prepare_arguments (
@@ -184,14 +170,61 @@ protected:
     virtual XCamReturn post_execute (SmartPtr<DrmBoBuffer> &output);
 
 private:
+    SmartPtr<CLImage> get_input_gauss () {
+        return _blender->get_gauss_image (_layer, _buf_index, _is_uv);
+    }
+    SmartPtr<CLImage> get_output_gauss () {
+        // need reset format
+        return _blender->get_gauss_image (_layer + 1, _buf_index, _is_uv);
+    }
+    SmartPtr<CLImage> get_output_lap () {
+        return _blender->get_lap_image (_layer, _buf_index, _is_uv);
+    }
 
-    XCAM_DEAD_COPY (CLLaplacianKernel);
+    XCAM_DEAD_COPY (CLPyramidTransformKernel);
 
 private:
-    SmartPtr<CLImage>                  _image_out_y;
-    SmartPtr<CLImage>                  _image_out_uv;
+    SmartPtr<CLPyramidBlender>         _blender;
+    uint32_t                           _layer;
+    uint32_t                           _buf_index;
+    bool                               _is_uv;
+    SmartPtr<CLImage>                  _output_gauss;
 };
 
+class CLPyramidReconstructKernel
+    : public CLImageKernel
+{
+public:
+    explicit CLPyramidReconstructKernel (
+        SmartPtr<CLContext> &context, SmartPtr<CLPyramidBlender> &blender, uint32_t layer, bool is_uv);
+
+protected:
+    virtual XCamReturn prepare_arguments (
+        SmartPtr<DrmBoBuffer> &input, SmartPtr<DrmBoBuffer> &output,
+        CLArgument args[], uint32_t &arg_count,
+        CLWorkSize &work_size);
+    virtual XCamReturn post_execute (SmartPtr<DrmBoBuffer> &output);
+private:
+    SmartPtr<CLImage>  get_input_gauss() {
+        return _blender->get_reconstruct_image (_layer + 1, _is_uv);
+    }
+    SmartPtr<CLImage>  get_input_lap() {
+        return _blender->get_blend_image (_layer, _is_uv);
+    }
+    SmartPtr<CLImage>  get_output_gauss() {
+        return _blender->get_reconstruct_image (_layer, _is_uv);
+    }
+
+    XCAM_DEAD_COPY (CLPyramidReconstructKernel);
+
+private:
+    SmartPtr<CLPyramidBlender>         _blender;
+    uint32_t                           _layer;
+    bool                               _is_uv;
+    SmartPtr<CLImage>                  _input_gauss;
+    int                                _out_gauss_width;
+    int                                _out_gauss_height;
+};
 
 SmartPtr<CLImageHandler>
 create_pyramid_blender (SmartPtr<CLContext> &context, int layer = 1, bool need_uv = true);
