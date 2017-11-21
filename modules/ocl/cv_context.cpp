@@ -42,6 +42,7 @@ CVContext::instance ()
 void
 CVContext::init_opencv_ocl ()
 {
+    return ;
     _context = CLDevice::instance()->get_context();
     cl_platform_id platform_id = CLDevice::instance()->get_platform_id ();
     char *platform_name = CLDevice::instance()->get_platform_name ();
